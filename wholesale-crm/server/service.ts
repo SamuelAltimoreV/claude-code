@@ -362,7 +362,7 @@ const hooks: Record<string, Hook> = {
       else if (row.status !== prev.status) await logActivity(ctx, { type: 'contract', summary: `${row.type}: ${prev.status} → ${row.status}`, ...base });
       if (row.status === 'Fully Executed' && prev?.status !== 'Fully Executed') {
         if (row.type === 'Assignment Agreement') {
-          if (row.transaction_id) await patch(ctx, 'transactions', row.transaction_id, { status: 'Assigned', buyer_id: row.buyer_id, assignment_price: row.assignment_price, assignment_fee: row.assignment_fee, assignment_contract: row.id }, { system: true });
+          if (row.transaction_id) await patch(ctx, 'transactions', row.transaction_id, { status: 'Assigned', buyer_id: row.buyer_id, assignment_price: row.assignment_price, assignment_fee: row.assignment_fee }, { system: true });
           for (const d of await repo.list(ctx.org, 'dispositions', { property_id: row.property_id })) if (['Active', 'Buyer Selected'].includes(d.status)) await patch(ctx, 'dispositions', d.id, { status: 'Assigned' }, { system: true });
           await advanceLead(ctx, row.lead_id, { stageId: 'closing' }, 'Assignment agreement executed');
         } else {
@@ -413,7 +413,6 @@ const hooks: Record<string, Hook> = {
   transactions: {
     before: async (ctx, data, prev) => {
       const m = { ...prev, ...data };
-      delete data.assignment_contract;
       if (!prev) data.checklist ??= ctx.settings.transactionChecklist.map(label => ({ label, done: false }));
       if (m.assignment_price != null && m.purchase_price != null && data.assignment_fee === undefined && (data.assignment_price !== undefined || data.purchase_price !== undefined)) data.assignment_fee = m.assignment_price - m.purchase_price;
       if (data.status === 'Closed' && prev?.status !== 'Closed') {
@@ -495,7 +494,6 @@ export async function patch(ctx: Ctx, name: string, id: string, input: R, opts: 
   const data = v.data;
   if (!opts.system && access(ctx, e.resource, 'write') === 'own' && e.ownerField && data[e.ownerField] !== undefined && data[e.ownerField] !== ctx.user?.id)
     throw new HttpError(403, 'Your role cannot reassign records to other team members.');
-  if (name === 'transactions' && input.assignment_contract) data.assignment_contract = input.assignment_contract;
   await hooks[name]?.before?.(ctx, data, prev);
   await checkRefs(ctx, name, data);
   if (data.custom) data.custom = { ...(prev.custom ?? {}), ...data.custom };

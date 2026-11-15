@@ -211,7 +211,7 @@ export const ENTITIES: Entity[] = [
       text('title_company', 'Title company'), text('title_contact', 'Title contact'),
       date('closing_date', 'Scheduled closing'), date('closed_on', 'Closed on'),
       bool('emd_deposited', 'Our EMD deposited'), bool('buyer_emd_received', 'Buyer EMD received'),
-      json('checklist', 'Checklist', { system: true }), long('notes', 'Notes'),
+      json('checklist', 'Checklist'), long('notes', 'Notes'),
     ],
   },
   {

@@ -496,9 +496,12 @@ app.post('/api/e/:entity', async c => {
     if (name === 'activities') {
       // Only internal notes can be created directly; every other activity is written by the system.
       if (!String(b.body ?? '').trim()) throw new HttpError(400, 'Write a note first.');
-      const parent = b.lead_id ? 'leads' : b.buyer_id ? 'buyers' : b.transaction_id ? 'transactions' : b.disposition_id ? 'dispositions' : b.property_id ? 'properties' : null;
-      if (!parent) throw new HttpError(400, 'A note must belong to a record.');
-      await svc.getFor(ctx, parent, b[`${parent === 'properties' ? 'property' : parent.slice(0, -1)}_id`], 'read');
+      // The author must be able to read at least one of the records the note is attached to.
+      const parents = ([['leads', b.lead_id], ['buyers', b.buyer_id], ['transactions', b.transaction_id], ['dispositions', b.disposition_id], ['properties', b.property_id]] as [string, string | undefined][]).filter(([, id]) => id);
+      if (!parents.length) throw new HttpError(400, 'A note must belong to a record.');
+      let allowed = false;
+      for (const [entity, id] of parents) { try { await svc.getFor(ctx, entity, id!, 'read'); allowed = true; break; } catch (e) { if (!(e instanceof HttpError) || e.status === 404) throw e; } }
+      if (!allowed) throw new HttpError(403, 'You do not have access to this record.');
       return svc.logActivity(ctx, { type: 'note', summary: 'Note', body: String(b.body).slice(0, 20000), lead_id: b.lead_id ?? null, property_id: b.property_id ?? null, buyer_id: b.buyer_id ?? null, transaction_id: b.transaction_id ?? null, disposition_id: b.disposition_id ?? null });
     }
     if (name === 'webhooks') { if (b.direction !== 'Inbound' && !isSafeWebhookUrl(String(b.url ?? ''))) throw new HttpError(400, 'Enter a public http(s) destination URL.'); const row = await svc.create(ctx, name, b); await repo.update(ctx.org, 'webhooks', row.id, { token: auth.newToken() }); return repo.get(ctx.org, 'webhooks', row.id); }

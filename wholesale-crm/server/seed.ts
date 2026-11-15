@@ -115,7 +115,7 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
   }
   for (let m = 0; m < 7; m++) {
     await ins('expenses', { category: 'Operating', subcategory: 'Software', amount: 420, date: dateAgo(m * 30 + 3), vendor: 'CRM, dialer, e-sign' }, m * 30 + 3);
-    await ins('expenses', { category: 'Operating', subcategory: 'Payroll & contractors', amount: 3800 + (m % 3) * 250, date: dateAgo(m * 30 + 1), vendor: 'Team' }, m * 30 + 1);
+    await ins('expenses', { category: 'Operating', subcategory: 'Payroll & contractors', amount: 1450 + (m % 3) * 150, date: dateAgo(m * 30 + 1), vendor: 'Team' }, m * 30 + 1);
   }
 
   const buyers: R[] = [];
@@ -150,7 +150,7 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
       motivation, reason: reason || null, asking_price: asking, timeline, negotiation: motivation === 'High' ? 'Flexible' : motivation === 'Medium' ? 'Somewhat flexible' : motivation === 'Low' ? 'Firm' : 'Unknown',
       decision_authority: tags.includes('Probate') ? 'Shared decision' : motivation === 'Unknown' ? 'Unknown' : 'Sole decision maker', other_decision_makers: tags.includes('Probate') ? 'Sibling (co-heir)' : null,
       circumstances: reason || null, est_fee: fee && fee > 0 ? Math.max(fee, 6000) : null, dead_reason: dead ? reason : null,
-      stage_changed_at: at(dead ? 20 : Math.min(created, 3 + idx * 2)), first_contact_at: reached('attempting') ? at(0.1) : null, last_contact_at: reached('attempting') ? ago(Math.min(created, Math.max(0.5, (i * 3) % 9))) : null,
+      stage_changed_at: stage === 'closed_won' ? at(42) : dead ? at(20) : ago(Math.min(created, 1 + (i * 3) % 7) + 0.1), first_contact_at: reached('attempting') ? at(0.1) : null, last_contact_at: reached('attempting') ? ago(Math.min(created, Math.max(0.5, (i * 3) % 9))) : null,
       contacted_at: reached('contacted') ? at(1) : null, qualified_at: reached('qualified') ? at(4) : null, offer_at: reached('offer_presented') ? at(8) : null,
       contract_at: reached('under_contract') ? at(13) : null, closed_at: stage === 'closed_won' ? at(42) : null, dead_at: dead ? at(20) : null }, created);
     leads.push({ ...lead, _c: contact, _p: property, _row: LEADS[i] });
@@ -172,13 +172,16 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
     if (reached('underwriting')) {
       for (let k = 0; k < 3; k++) await ins('comps', { property_id: property.id, address: `${300 + k * 211 + i * 7} ${['Oakwood', 'Fairmount', 'Harrison'][k]} ${['Ave', 'St', 'Blvd'][k]}`, sale_price: Math.round(arv * (0.96 + k * 0.035) / 500) * 500, sale_date: dateAgo(30 + k * 28 + i),
         sqft: sqft + (k - 1) * 90, beds: beds || 3, baths, distance: 0.3 + k * 0.25, notes: ['Fully renovated', 'Updated kitchen and baths', 'Renovated, similar lot'][k], source: 'Demo data (manual)' }, created - 6);
-      const inputs = defaultInputs(cfg, { arv, repairs, asking: asking ?? undefined, maoPct: inSummit ? 72 : 70 });
-      const results = analyzeDeal(inputs, cfg.thresholds);
-      const an = await ins('analyses', { name: 'Initial underwriting', property_id: property.id, lead_id: lead.id, inputs, results, rating: results.rating, mao: Math.round(results.mao), offer_price: null }, created - 6);
+      const accepted0 = idx >= STAGE_ORDER.indexOf('under_contract');
+      let inputs = defaultInputs(cfg, { arv, repairs, asking: asking ?? undefined, maoPct: inSummit ? 72 : 70 });
+      let results = analyzeDeal(inputs, cfg.thresholds);
+      const offerAmount = Math.round(Math.min(results.mao, (asking ?? results.mao) * (accepted0 ? 0.95 : 0.88)) / 500) * 500;
+      if (reached('offer_presented')) { inputs = { ...inputs, offerPrice: offerAmount }; results = analyzeDeal(inputs, cfg.thresholds); }
+      const an = await ins('analyses', { name: 'Initial underwriting', property_id: property.id, lead_id: lead.id, inputs, results, rating: results.rating, mao: Math.round(results.mao), offer_price: inputs.offerPrice ?? null }, created - 6);
       await act('analysis', `Deal analysis saved: Initial underwriting — ${results.rating}, MAO $${Math.round(results.mao).toLocaleString()}`, 6);
       if (reached('offer_presented')) {
         const accepted = idx >= STAGE_ORDER.indexOf('under_contract');
-        const amount = Math.round(Math.min(results.mao, (asking ?? results.mao) * (accepted ? 0.95 : 0.88)) / 500) * 500;
+        const amount = offerAmount;
         const offer = await ins('offers', { property_id: property.id, lead_id: lead.id, contact_id: contact.id, analysis_id: an.id, from_party: 'Us', amount, offer_date: dateAgo(Math.max(created - 8, 0)), expires_on: dateAgo(Math.max(created - 8, 0) - 7),
           closing_date: dateAgo(Math.max(created - 8, 0) - 30), emd: 1000, fee_target: 10000, status: accepted ? 'Accepted' : stage === 'negotiating' ? 'Countered' : dead ? 'Rejected' : 'Presented', method: i % 2 ? 'In person' : 'Phone', owner_id: team[ownerIdx].id,
           notes: accepted ? 'Seller accepted after walkthrough.' : 'Presented with comps and repair list.' }, created - 8);
@@ -232,7 +235,8 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
 
   // Tasks: overdue, today and upcoming
   const due = (days: number, hour = 10) => { const t = new Date(Date.now() + days * DAY); t.setHours(hour, 0, 0, 0); return t.toISOString(); };
-  const T = (title: string, category: string, days: number, li: number | null, assignee: string, priority = 'Normal', extra: R = {}) => ins('tasks', { title, category, due_at: due(days, 9 + (Math.abs(days) % 7)), priority, assignee_id: assignee, status: 'Open', lead_id: li === null ? null : leads[li].id, property_id: li === null ? null : leads[li].property_id, ...extra }, 3);
+  let tn = 0;
+  const T = (title: string, category: string, days: number, li: number | null, assignee: string, priority = 'Normal', extra: R = {}) => ins('tasks', { title, category, due_at: days === 0 ? new Date(Date.now() + (1.5 + (tn++ % 4)) * 36e5).toISOString() : due(days, 9 + (Math.abs(days) % 7)), priority, assignee_id: assignee, status: 'Open', lead_id: li === null ? null : leads[li].id, property_id: li === null ? null : leads[li].property_id, ...extra }, 3);
   await T('Call back Yolanda Grant — third attempt', 'Call seller', -2, 19, team[1].id, 'High');
   await T('Follow up with Angela Price on price expectations', 'Follow up', -1, 17, team[1].id);
   await T('Call new web lead: Joyce McAllister', 'Call seller', 0, 21, team[1].id, 'Urgent');

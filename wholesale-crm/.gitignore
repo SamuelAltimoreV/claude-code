@@ -4,3 +4,5 @@ data
 .env
 *.log
 test-results
+tests/e2e/shots
+tests/e2e/import.csv
