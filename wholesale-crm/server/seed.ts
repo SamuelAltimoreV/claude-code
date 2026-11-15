@@ -180,6 +180,8 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
       if (reached('offer_presented')) { inputs = { ...inputs, offerPrice: offerAmount }; results = analyzeDeal(inputs, cfg.thresholds); }
       const an = await ins('analyses', { name: 'Initial underwriting', property_id: property.id, lead_id: lead.id, inputs, results, rating: results.rating, mao: Math.round(results.mao), offer_price: inputs.offerPrice ?? null }, created - 6);
       await act('analysis', `Deal analysis saved: Initial underwriting — ${results.rating}, MAO $${Math.round(results.mao).toLocaleString()}`, 6);
+      // The lead's projected fee comes from its underwriting, as it would when a user saves an analysis.
+      if (results.projectedFee > 0) await repo.update(org, 'leads', lead.id, { est_fee: Math.round(results.projectedFee / 500) * 500 });
       if (reached('offer_presented')) {
         const accepted = idx >= STAGE_ORDER.indexOf('under_contract');
         const amount = offerAmount;

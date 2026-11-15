@@ -34,6 +34,8 @@ export default function Analyzer() {
     const key = `${propertyId}:${analysisId}`;
     if (loaded === key || d.loading) return;
     const a = d.analyses.find(x => x.id === analysisId);
+    // Opening a property that already has underwriting starts from its most recent saved scenario.
+    if (!analysisId && saved[0]) { const n = new URLSearchParams(sp); n.set('analysis', saved[0].id); setSp(n, { replace: true }); return; }
     if (a) setI({ ...defaultInputs(cfg), ...a.inputs });
     else if (property) { const market = d.markets.find(m => m.id === property.market_id); setI(defaultInputs(cfg, { arv: property.arv ?? 0, repairs: property.repair_cost ?? 0, asking: lead?.asking_price ?? undefined, maoPct: market?.mao_pct ?? cfg.maoPct })); }
     else setI(defaultInputs(cfg));

@@ -49,7 +49,7 @@ export default function Pipeline() {
                     <span className="flex -space-x-1">{owners.map(o => <Avatar key={o} name={name(o)} size={16} />)}</span></div>
                 </div>
                 <div className="flex-1 overflow-y-auto scroll-thin p-2 space-y-2">
-                  {list.map(l => { const ct = c.get(l.contact_id), pr = p.get(l.property_id), age = daysSince(l.stage_changed_at), late = l.next_follow_up && l.next_follow_up < now, none = !l.next_follow_up && !terminal; return (
+                  {list.map(l => { const ct = c.get(l.contact_id), pr = p.get(l.property_id), age = daysSince(l.stage_changed_at), late = l.next_follow_up && l.next_follow_up < now, none = !l.next_follow_up && !terminal && s.milestone !== 'contract'; return (
                     <div key={l.id} draggable={canWrite} onDragStart={e => { setDrag(l.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', l.id); }} onDragEnd={() => { setDrag(null); setOver(null); }} onClick={() => nav(`/leads/${l.id}`)}
                       className={cx('card p-2.5 cursor-pointer hover:border-line-strong shadow-[0_1px_1px_rgb(0_0_0/0.03)]', drag === l.id && 'opacity-40')} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') nav(`/leads/${l.id}`); }}>
                       <div className="flex items-start justify-between gap-2"><span className="font-medium truncate">{contactName(ct)}</span>{l.is_demo && <DemoTag />}</div>

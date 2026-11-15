@@ -29,7 +29,7 @@ export function LeadsPage() {
     { key: 'owner', label: 'Owner', value: r => name(r.owner_id), render: r => <UserChip name={name(r.owner_id)} /> },
     { key: 'asking_price', label: 'Asking', align: 'right', render: r => money(r.asking_price) },
     { key: 'est_fee', label: 'Proj. fee', align: 'right', render: r => money(r.est_fee), hidden: true },
-    { key: 'next_follow_up', label: 'Next follow-up', render: r => (r.next_follow_up ? <span className={cx(r.next_follow_up < new Date().toISOString() && 'text-t-red font-medium')}>{ago(r.next_follow_up)}</span> : isTerminal(settings, r.stage) ? null : <span className="text-t-amber">None scheduled</span>) },
+    { key: 'next_follow_up', label: 'Next follow-up', render: r => (r.next_follow_up ? <span className={cx(r.next_follow_up < new Date().toISOString() && 'text-t-red font-medium')}>{ago(r.next_follow_up)}</span> : isTerminal(settings, r.stage) || stageById(settings, r.stage)?.milestone === 'contract' ? null : <span className="text-t-amber">None scheduled</span>) },
     { key: 'last_contact_at', label: 'Last contact', render: r => (r.last_contact_at ? ago(r.last_contact_at) : null) },
     { key: 'tags', label: 'Tags', value: r => r.tags, render: r => (r.tags?.length ? <span className="flex gap-1">{r.tags.slice(0, 2).map((t: string) => <Badge key={t}>{t}</Badge>)}{r.tags.length > 2 && <span className="text-fg-3">+{r.tags.length - 2}</span>}</span> : null), hidden: true },
     { key: 'timeline', label: 'Timeline', hidden: true }, { key: 'city', label: 'City', value: r => p.get(r.property_id)?.city, hidden: true },
@@ -150,6 +150,8 @@ export function LeadDetail() {
   const enrollment = d.enrollments.find(e => e.lead_id === lead.id && e.status === 'Active'), seq = d.sequences.find(s => s.id === enrollment?.sequence_id);
   const openTasks = tasks.filter(t => t.status === 'Open' || t.status === 'In Progress'), canWrite = perms.write('leads');
   const terminal = isTerminal(settings, lead.stage), blocked = !!contact?.dnc;
+  // Deals under contract are driven by their transaction checklist, so they are not flagged for a missing follow-up.
+  const inContract = stageById(settings, lead.stage)?.milestone === 'contract', needsNext = !terminal && !inContract && !lead.next_follow_up;
   const equity = property?.est_value != null && property?.mortgage_balance != null ? property.est_value - property.mortgage_balance : null;
   const del = async () => { if (await confirmDialog({ title: 'Delete this lead?', body: 'The lead, its timeline and notes are deleted permanently. The seller and property records are kept.', danger: true, confirm: 'Delete lead' })) { try { await w.remove('leads', lead.id); toast.success('Lead deleted'); nav('/leads'); } catch (e) { toast.error(e); } } };
   const enroll = async (sequenceId: string) => { try { await w.post(`/api/leads/${lead.id}/enroll`, { sequenceId }); toast.success('Follow-up sequence started'); } catch (e) { toast.error(e); } };
@@ -178,13 +180,13 @@ export function LeadDetail() {
       <div className="card px-4 py-3 mb-4 flex flex-wrap items-center gap-x-8 gap-y-3">
         <div><div className="text-[11px] text-fg-3 mb-1">Pipeline stage</div><select className="input !w-56 font-medium" value={lead.stage} disabled={!canWrite} onChange={e => changeStage(lead, e.target.value)} aria-label="Pipeline stage">{settings.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
         <div><div className="text-[11px] text-fg-3 mb-1">Lead score</div><div className="h-8 flex items-center gap-2"><ScorePill score={lead.score} />{lead.score_detail?.band && <StatusBadge value={lead.score_detail.band} dot={false} />}</div></div>
-        <div><div className="text-[11px] text-fg-3 mb-1">Next follow-up</div><div className={cx('h-8 flex items-center font-medium', !lead.next_follow_up && !terminal && 'text-t-amber', lead.next_follow_up && lead.next_follow_up < new Date().toISOString() && 'text-t-red')}>{lead.next_follow_up ? fdatetime(lead.next_follow_up) : terminal ? '—' : 'None scheduled'}</div></div>
+        <div><div className="text-[11px] text-fg-3 mb-1">Next follow-up</div><div className={cx('h-8 flex items-center font-medium', needsNext && 'text-t-amber', lead.next_follow_up && lead.next_follow_up < new Date().toISOString() && 'text-t-red')}>{lead.next_follow_up ? fdatetime(lead.next_follow_up) : terminal ? '—' : inContract ? 'Managed in transaction' : 'None scheduled'}</div></div>
         <div><div className="text-[11px] text-fg-3 mb-1">Last contact</div><div className="h-8 flex items-center">{lead.last_contact_at ? ago(lead.last_contact_at) : 'Never'}</div></div>
         <div><div className="text-[11px] text-fg-3 mb-1">Asking</div><div className="h-8 flex items-center tnum">{money(lead.asking_price)}</div></div>
         <div><div className="text-[11px] text-fg-3 mb-1">Est. equity</div><div className="h-8 flex items-center tnum">{money(equity)}</div></div>
         <div><div className="text-[11px] text-fg-3 mb-1">Projected fee</div><div className="h-8 flex items-center tnum">{money(txn?.assignment_fee ?? lead.est_fee)}</div></div>
       </div>
-      {!terminal && !lead.next_follow_up && canWrite && <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-lg border border-warn/40 bg-warn/5"><CalendarPlus size={15} className="text-t-amber shrink-0" /><span className="flex-1">This lead has no follow-up scheduled. Leads without a next step are the ones that slip through the cracks.</span><button className="btn btn-sm" onClick={() => openAction({ type: 'followup', lead_id: lead.id })}>Schedule one</button></div>}
+      {needsNext && canWrite && <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-lg border border-warn/40 bg-warn/5"><CalendarPlus size={15} className="text-t-amber shrink-0" /><span className="flex-1">This lead has no follow-up scheduled. Leads without a next step are the ones that slip through the cracks.</span><button className="btn btn-sm" onClick={() => openAction({ type: 'followup', lead_id: lead.id })}>Schedule one</button></div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4 items-start">
         <div className="card min-w-0">
