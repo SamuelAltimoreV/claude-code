@@ -45,6 +45,14 @@ async function mutate<T>(c: Context<Env>, fn: (ctx: Ctx) => Promise<T>): Promise
 const read = async (c: Context<Env>) => svc.makeCtx(c.get('user').org_id, c.get('user'));
 function requireAdmin(ctx: Ctx, resource: string) { if (svc.access(ctx, resource, 'write') !== 'all') throw new HttpError(403, `Your role cannot manage ${resource}.`); }
 
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'same-origin');
+  if (!c.res.headers.get('Cache-Control')) c.header('Cache-Control', 'no-store');
+});
+
 // CSRF: state-changing requests must carry a custom header browsers will not send cross-site without CORS approval.
 app.use('/api/*', async (c, next) => {
   const p = c.req.path;
@@ -228,7 +236,12 @@ app.put('/api/settings', async c => {
     if (used.length) throw new HttpError(409, `Cannot remove stage "${ctx.settings.stages.find(s => s.id === used[0].stage)?.name ?? used[0].stage}": ${used[0].n} lead(s) are in it. Move them first.`);
     for (const role of ['Owner', 'Administrator'] as const) for (const r of RESOURCES) next.permissions[role][r] = { read: 'all', write: 'all', delete: true };
     await q('update organizations set settings = $2::jsonb, name = $3 where id = $1', [ctx.org, JSON.stringify(next), next.company.name || ctx.settings.company.name]);
-    await svc.audit(ctx, 'update', 'settings', ctx.org, `Updated settings (${Object.keys(b).join(', ')})`);
+    await svc.audit(ctx, 'update', 'settings', ctx.org, 'Updated workspace settings');
+    // Changed scoring rules apply to every open lead immediately, not just the next time each one is edited.
+    if (JSON.stringify(next.scoring) !== JSON.stringify(ctx.settings.scoring)) {
+      const scoped: Ctx = { ...ctx, settings: next };
+      for (const l of (await q('select id from leads where org_id = $1 and closed_at is null and dead_at is null', [ctx.org])).rows) await svc.rescoreLead(scoped, l.id);
+    }
     return next;
   });
   return c.json(cleanSettings(settings));
@@ -296,7 +309,7 @@ async function intake(ctx: Ctx, input: IntakeInput) {
   svc.assertAccess(ctx, 'leads', 'write');
   let contactId = input.contactId, propertyId = input.propertyId, duplicate = false;
   if (!contactId || (!propertyId && input.property?.address)) {
-    const [contacts, properties] = await Promise.all([repo.list(ctx.org, 'contacts'), repo.list(ctx.org, 'properties')]);
+    const contacts = await repo.list(ctx.org, 'contacts'), properties = await repo.list(ctx.org, 'properties');
     const d = findDuplicates({ phone: input.contact?.phone, email: input.contact?.email, address: input.property?.address, zip: input.property?.zip }, contactId ? [] : contacts, propertyId ? [] : properties);
     if (d.contacts.length || d.properties.length) {
       if (input.mode === 'merge') { contactId ??= d.contacts[0]?.id; propertyId ??= d.properties[0]?.id; duplicate = true; }
@@ -445,6 +458,7 @@ app.delete('/api/demo', async c => c.json(await mutate(c, async ctx => { require
 
 // ---------- AI ----------
 app.post('/api/ai/lead-summary', async c => { const b = await body(c); return c.json(await ai.leadSummary(await read(c), String(b.leadId))); });
+app.post('/api/ai/call-summary', async c => { const b = await body(c); return c.json(await ai.callSummary(await read(c), String(b.commId))); });
 app.post('/api/ai/deal-review', async c => { const ctx = await read(c); svc.assertAccess(ctx, 'offers', 'read'); return c.json(await ai.dealReview(ctx, await body(c) as any)); });
 app.post('/api/ai/ask', async c => { const b = await body(c); const ctx = await read(c); svc.assertAccess(ctx, 'analytics', 'read'); return c.json(await ai.ask(ctx, String(b.question ?? ''), Array.isArray(b.history) ? b.history : [])); });
 

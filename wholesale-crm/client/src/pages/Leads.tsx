@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Calculator, CalendarPlus, ChevronLeft, FileUp, HandCoins, Mail, MessageSquare, MoreHorizontal, Pencil, Phone, Play, ShieldAlert, Sparkles, Square, Trash2, UserPlus, Users } from 'lucide-react';
 import { contactName, propertyLabel } from '@shared/logic';
 import { isTerminal, stageById } from '@shared/settings';
-import { api, useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
+import { api, useBoot, useData, usePerms, useRows, useWrite, type R } from '@/lib/app';
 import { ago, fdate, fdatetime, money, num, parseCsv } from '@/lib/format';
 import { Badge, Card, confirmDialog, cx, Empty, ErrorBox, Field, KV, Loading, Menu, Modal, PageHeader, ScorePill, Spinner, StatusBadge, Tabs, toast, useBusy, UserChip } from '@/ui/core';
 import { DataTable, type Col } from '@/ui/DataTable';
@@ -136,14 +136,15 @@ function ImportModal({ onClose, campaigns }: { onClose: () => void; campaigns: R
 export function LeadDetail() {
   const { id } = useParams();
   const { settings, providers } = useBoot();
-  const d = useData('leads', 'contacts', 'properties', 'activities', 'tasks', 'offers', 'communications', 'enrollments', 'sequences', 'analyses', 'contracts', 'transactions', 'campaigns', 'suppressions');
+  const d = useData('leads', 'contacts', 'properties', 'tasks', 'offers', 'enrollments', 'sequences', 'analyses', 'contracts', 'transactions');
+  const history = useRows('activities', { lead_id: id });
   const perms = usePerms(), w = useWrite(), nav = useNavigate(), name = useNames(), changeStage = useStageChange();
   const [tab, setTab] = useState<'timeline' | 'tasks' | 'deal' | 'files'>('timeline'), [edit, setEdit] = useState<null | 'lead' | 'contact'>(null);
   const lead = d.leads.find(l => l.id === id);
   if (d.loading && !lead) return <Loading rows={10} />;
   if (!lead) return <Empty title="Lead not found" body="It may have been deleted, or it is assigned to someone else." action={<Link className="btn" to="/leads">Back to leads</Link>} />;
   const contact = d.contacts.find(c => c.id === lead.contact_id), property = d.properties.find(p => p.id === lead.property_id);
-  const acts = d.activities.filter(a => a.lead_id === lead.id), tasks = d.tasks.filter(t => t.lead_id === lead.id).sort((a, b) => String(a.due_at).localeCompare(String(b.due_at)));
+  const acts = history.rows, tasks = d.tasks.filter(t => t.lead_id === lead.id).sort((a, b) => String(a.due_at).localeCompare(String(b.due_at)));
   const offers = d.offers.filter(o => o.lead_id === lead.id), analyses = d.analyses.filter(a => a.lead_id === lead.id || (property && a.property_id === property.id));
   const contracts = d.contracts.filter(c => c.lead_id === lead.id), txn = d.transactions.find(t => t.lead_id === lead.id);
   const enrollment = d.enrollments.find(e => e.lead_id === lead.id && e.status === 'Active'), seq = d.sequences.find(s => s.id === enrollment?.sequence_id);
@@ -189,7 +190,7 @@ export function LeadDetail() {
         <div className="card min-w-0">
           <Tabs className="px-4" value={tab} onChange={setTab} tabs={[{ id: 'timeline', label: 'Timeline', count: acts.length }, { id: 'tasks', label: 'Tasks', count: openTasks.length }, { id: 'deal', label: 'Underwriting & offers', count: offers.length + analyses.length }, { id: 'files', label: 'Files' }]} />
           <div className="p-4">
-            {tab === 'timeline' && <Timeline activities={acts} scope={{ lead_id: lead.id, property_id: lead.property_id }} loading={d.loading} canNote={canWrite} />}
+            {tab === 'timeline' && <Timeline activities={acts} scope={{ lead_id: lead.id, property_id: lead.property_id }} loading={history.loading} canNote={canWrite} />}
             {tab === 'tasks' && <TaskList tasks={tasks} onNew={() => newTask({ lead_id: lead.id, property_id: lead.property_id })} />}
             {tab === 'deal' && <div className="space-y-5">
               <div><div className="flex items-center justify-between mb-2"><div className="section-t">Deal analyses</div>{property && <Link className="btn btn-sm" to={`/analyzer?property=${property.id}&lead=${lead.id}`}><Calculator size={12} />New analysis</Link>}</div>

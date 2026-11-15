@@ -11,6 +11,7 @@ const log = (...a) => console.log('✓', ...a);
   page.setDefaultTimeout(12000);
   const errors = []; process.on('exit', () => console.log(errors.length ? 'COLLECTED ERRORS:\n' + errors.join('\n') : 'NO CONSOLE/PAGE ERRORS'));
   page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
+  page.on('console', m => { if (m.type() === 'error' && /Refused to|Content Security Policy/i.test(m.text())) errors.push('CSP ' + m.text().slice(0, 200)); });
   page.on('response', r => { if (r.status() >= 500) errors.push(`HTTP ${r.status()} ${r.url()}`); });
   const f = (label, scope = page) => scope.getByRole('group', { name: label, exact: true }).locator('input, select, textarea').first();
   const toast = t => page.getByRole('status').getByText(t).first().waitFor();

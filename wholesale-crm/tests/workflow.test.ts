@@ -9,6 +9,7 @@ import { matchBuyer, scoreLead, canContact, renderTemplate } from '../shared/log
 import { kpis } from '../shared/metrics';
 
 let cookie = '';
+const RUN = Date.now().toString(36), E = (n: string) => `${n}-${RUN}@test.example`;
 async function api(method: string, path: string, body?: unknown, jar = true) {
   const res = await app.request(path, { method, headers: { 'content-type': 'application/json', 'x-requested-with': 'crm', ...(jar && cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const set = res.headers.get('set-cookie');
@@ -85,8 +86,8 @@ describe('end-to-end wholesale workflow', () => {
     expect(res.status).toBe(403);
   });
   it('signs up with demo data: 25 leads, 25 properties, 15 buyers', async () => {
-    expect((await api('POST', '/api/auth/signup', { company: 'Test Wholesale Co', name: 'Sam Owner', email: 'owner@test.example', password: 'short' })).status).toBe(400);
-    await ok('POST', '/api/auth/signup', { company: 'Test Wholesale Co', name: 'Sam Owner', email: 'owner@test.example', password: 'correct-horse-battery' });
+    expect((await api('POST', '/api/auth/signup', { company: 'Test Wholesale Co', name: 'Sam Owner', email: E('owner'), password: 'short' })).status).toBe(400);
+    await ok('POST', '/api/auth/signup', { company: 'Test Wholesale Co', name: 'Sam Owner', email: E('owner'), password: 'correct-horse-battery' });
     const boot = await ok('GET', '/api/bootstrap');
     S.me = boot.user; S.users = boot.users; S.settings = boot.settings;
     expect(boot.settings._secret).toBeUndefined();
@@ -252,7 +253,7 @@ describe('end-to-end wholesale workflow', () => {
   });
 
   it('role-based access is enforced on the server', async () => {
-    const inv = await ok('POST', '/api/users/invite', { name: 'Rep Two', email: 'rep2@test.example', role: 'Acquisition Representative' });
+    const inv = await ok('POST', '/api/users/invite', { name: 'Rep Two', email: E('rep2'), role: 'Acquisition Representative' });
     const ownerCookie = cookie;
     const token = inv.inviteUrl.split('/').pop();
     cookie = '';
@@ -262,7 +263,7 @@ describe('end-to-end wholesale workflow', () => {
     expect((await api('GET', `/api/e/leads/${S.lead.id}`)).status).toBe(403);
     expect((await api('GET', '/api/e/buyers')).status).toBe(403);
     expect((await api('PUT', '/api/settings', { company: { name: 'Hacked' } })).status).toBe(403);
-    expect((await api('POST', '/api/users/invite', { name: 'X', email: 'x@test.example', role: 'Owner' })).status).toBe(403);
+    expect((await api('POST', '/api/users/invite', { name: 'X', email: E('x'), role: 'Owner' })).status).toBe(403);
     expect((await api('DELETE', '/api/demo')).status).toBe(403);
     const own = await ok('POST', '/api/leads/intake', { contact: { first_name: 'Rep', last_name: 'Lead', phone: '3305559955' }, property: null, lead: {} });
     expect((await list('leads')).length).toBe(1);
@@ -273,7 +274,7 @@ describe('end-to-end wholesale workflow', () => {
 
   it('tenant isolation: a second organization sees nothing from the first', async () => {
     const ownerCookie = cookie; cookie = '';
-    await ok('POST', '/api/auth/signup', { company: 'Other Co', name: 'Other Owner', email: 'other@test.example', password: 'correct-horse-battery', demo: false });
+    await ok('POST', '/api/auth/signup', { company: 'Other Co', name: 'Other Owner', email: E('other'), password: 'correct-horse-battery', demo: false });
     expect((await list('leads')).length).toBe(0);
     expect((await api('GET', `/api/e/leads/${S.lead.id}`)).status).toBe(404);
     expect((await api('PATCH', `/api/e/leads/${S.lead.id}`, { reason: 'x' })).status).toBe(404);

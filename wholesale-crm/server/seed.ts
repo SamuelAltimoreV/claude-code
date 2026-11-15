@@ -93,7 +93,8 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
   const tag = org.slice(0, 8);
   const ins = (name: string, data: R, daysAgo?: number) => repo.insert(org, name, data, { demo: true, userId: ownerId, createdAt: daysAgo === undefined ? undefined : ago(daysAgo) });
   const mkUser = async (name: string, role: string, department: string) => (await q(
-    `insert into users (org_id, email, name, role, department, status, is_demo) values ($1, $2, $3, $4, $5, 'active', true) returning id, name`,
+    `insert into users (org_id, email, name, role, department, status, is_demo) values ($1, $2, $3, $4, $5, 'active', true)
+     on conflict (email) do update set status = 'active', role = excluded.role returning id, name`,
     [org, `${name.toLowerCase().replace(/\s+/g, '.')}+${tag}@demo.invalid`, name, role, department])).rows[0];
   const team = [{ id: ownerId }, await mkUser('Jenna Kowalski', 'Acquisition Representative', 'Acquisitions'), await mkUser('Devon Carter', 'Acquisition Representative', 'Acquisitions')];
   const mgr = await mkUser('Marcus Reed', 'Acquisition Manager', 'Acquisitions');
@@ -182,7 +183,7 @@ export async function seedDemo(ctx: Ctx, ownerId: string) {
       if (reached('offer_presented')) {
         const accepted = idx >= STAGE_ORDER.indexOf('under_contract');
         const amount = offerAmount;
-        const offer = await ins('offers', { property_id: property.id, lead_id: lead.id, contact_id: contact.id, analysis_id: an.id, from_party: 'Us', amount, offer_date: dateAgo(Math.max(created - 8, 0)), expires_on: dateAgo(Math.max(created - 8, 0) - 7),
+        const offer = await ins('offers', { property_id: property.id, lead_id: lead.id, contact_id: contact.id, analysis_id: an.id, from_party: 'Us', amount, offer_date: dateAgo(Math.max(created - 8, 0)), expires_on: accepted || dead ? dateAgo(Math.max(created - 8, 0) - 7) : dateAgo(-(4 + (i % 4))),
           closing_date: dateAgo(Math.max(created - 8, 0) - 30), emd: 1000, fee_target: 10000, status: accepted ? 'Accepted' : stage === 'negotiating' ? 'Countered' : dead ? 'Rejected' : 'Presented', method: i % 2 ? 'In person' : 'Phone', owner_id: team[ownerIdx].id,
           notes: accepted ? 'Seller accepted after walkthrough.' : 'Presented with comps and repair list.' }, created - 8);
         await act('offer', `Offer $${amount.toLocaleString()} recorded (Presented)`, 8);

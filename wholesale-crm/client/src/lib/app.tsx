@@ -50,6 +50,15 @@ export function useData<K extends string>(...names: K[]): { [P in K]: R[] } & { 
 }
 const EMPTY_ARR: R[] = [];
 
+/** Loads the rows of one collection that belong to a single record (e.g. a lead's activities). */
+export function useRows(entity: string, params: Record<string, string | null | undefined>): { rows: R[]; loading: boolean } {
+  const perms = usePerms();
+  const qs = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join('&');
+  const on = perms.read(entity) && Object.values(params).every(Boolean);
+  const q = useQuery({ queryKey: ['e', entity, qs], queryFn: () => api<R[]>('GET', `/api/e/${entity}?${qs}`), enabled: on, staleTime: 20_000 });
+  return { rows: q.data ?? EMPTY_ARR, loading: on && q.isLoading };
+}
+
 export const DATASET_KEYS = ['leads', 'properties', 'contacts', 'offers', 'contracts', 'transactions', 'revenue', 'expenses', 'communications', 'tasks', 'campaigns', 'dispositions', 'buyer_interests', 'buyers', 'markets'] as const;
 export function useDataset(): { ds: Dataset; loading: boolean } {
   const d = useData(...DATASET_KEYS);

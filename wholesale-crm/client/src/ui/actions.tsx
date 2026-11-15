@@ -94,7 +94,7 @@ function LogCallModal({ lead_id, buyer_id, contact_id, onClose }: { lead_id?: st
   return (
     <Modal open onClose={onClose} size="lg" title="Log a conversation">
       <EntityForm entity="communications" onCancel={onClose} submitLabel="Save to timeline"
-        fields={[...(preset ? [] : ['lead_id', 'buyer_id']), 'type', 'direction', 'outcome', 'duration_min', 'at', 'body', 'next_action', 'follow_up_at']}
+        fields={[...(preset ? [] : ['lead_id', 'buyer_id']), 'type', 'direction', 'outcome', 'duration_min', 'at', 'body', 'next_action', 'follow_up_at', 'transcript']}
         initial={{ type: 'Call', direction: 'Outbound', at: new Date().toISOString() }}
         onSubmit={async data => {
           if (!preset && !data.lead_id && !data.buyer_id) throw new Error('Choose the lead or buyer this conversation was with.');

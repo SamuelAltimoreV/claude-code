@@ -18,8 +18,12 @@ with sample records. For development with hot reload use `npm run dev` (web app 
 
 | Command | What it does |
 |---|---|
-| `npm test` | 22 tests: underwriting math, scoring, matching, compliance, and the full API workflow |
-| `npm run test:e2e` | Browser test of the whole workflow through the UI (start the server with `DB_MEMORY=true npm start` first) |
+| `npm test` | 37 tests: underwriting math, scoring, matching, compliance, the full API workflow, permissions, tenant isolation, scheduler, webhooks, attachments, and the SMS / email / AI connectors against local stand-ins |
+| `npm run test:e2e` | Browser test of the lead-to-closing workflow through the UI |
+| `npm run test:e2e:sweep` | Browser test of 27 secondary flows (filters, saved views, bulk actions, uploads, settings, roles, mobile) |
+
+Each browser test needs its own fresh database: run `DB_MEMORY=true npm start`, run one test, restart the server
+before the next.
 | `npm run typecheck` | TypeScript check of server, shared logic and web app |
 
 Configuration is in `.env` (copy `.env.example`). With no configuration the app stores data in an embedded
@@ -90,6 +94,8 @@ Everything below works end to end against the database and is covered by tests.
 | Tasks, calendar (day/week/month), reminders, notifications | Working |
 | Automation builder (13 triggers, 13 condition fields, 12 actions), execution history, retry, sequences | Working |
 | Compliance: consent timestamps, do-not-contact, suppression list, quiet hours, unsubscribe links | Working |
+| Conversation log with full notes and optional call transcripts | Working |
+| Company settings: brand color, formats, lists, custom fields, markets, scoring, analyzer defaults | Working |
 | Inbound/outbound webhooks (Zapier, Make, web forms), iCalendar feed | Working |
 | Demo data flagged `is_demo`, removable in one click | Working |
 
@@ -99,16 +105,17 @@ Nothing in the app reports a send or a connection that did not happen.
 
 | Capability | State | To enable |
 |---|---|---|
-| Sending SMS | Connector written, **not tested against live Twilio** | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
-| Sending email | Connector written, **not tested against a live SMTP server** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` |
-| AI lead summary, deal review, business analyst | Written against the Anthropic SDK, **not exercised with a live key** | `ANTHROPIC_API_KEY` |
+| Sending and receiving SMS | Tested against a local mock of the Twilio REST API: request format, consent and contact-hour gating, failure handling, inbound STOP with signature check. **Not yet run against Twilio itself** | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+| Sending email | Tested against a local SMTP server: delivery, footer, unsubscribe link, suppression, automation and sequence sends. **Not yet run against your email provider** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` |
+| AI lead summary, call summary, deal review, business analyst | Tested against a mock of the Anthropic Messages API: request shape, structured-output parsing, the analyst's tool calls over real records, permissions. **Not yet run against the live API** | `ANTHROPIC_API_KEY` |
 | Calls | Logged manually | A calling-platform connector (not built) |
 | Property data, county records, skip tracing, verified comps, MLS | Not built. Fields exist; records carry `data_source` | Provider contract + connector |
 | E-signature | Signature status tracked by hand | Connector (not built) |
 | Google Calendar two-way sync, Drive/Dropbox, accounting | Not built (one-way calendar feed and CSV export exist) | Connectors |
 
 Until SMS/email are connected, sequence steps for those channels become manual tasks (when consent is on
-file) and automation send actions fail with a logged reason.
+file) and automation send actions fail with a logged reason. After adding credentials, use **Integrations →
+Test connection** first, then send one message to yourself before relying on automations.
 
 ## Compliance
 

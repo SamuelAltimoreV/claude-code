@@ -38,7 +38,7 @@ export const localDay = (v: string) => { const d = parse(v); return `${d.getFull
 export const toLocalInput = (v?: string | null) => { if (!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? '' : `${localDay(v)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 export function toCsv(rows: Record<string, unknown>[], cols: { label: string; value: (r: any) => unknown }[]) {
-  const esc = (v: unknown) => { let s = v === null || v === undefined ? '' : Array.isArray(v) ? v.join('; ') : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const esc = (v: unknown) => { let s = v === null || v === undefined ? '' : Array.isArray(v) ? v.join('; ') : String(v); if (/^[=+\-@]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   return [cols.map(c => esc(c.label)).join(','), ...rows.map(r => cols.map(c => esc(c.value(r))).join(','))].join('\n');
 }
 export function download(name: string, content: string, type = 'text/csv') {

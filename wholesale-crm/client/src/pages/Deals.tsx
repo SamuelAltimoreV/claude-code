@@ -4,7 +4,7 @@ import { AlarmClock, CheckCircle2, Copy, FileSignature, FileText, HandCoins, Meg
 import { analyzeDeal } from '@shared/calc';
 import { contactName, propertyLabel, renderTemplate } from '@shared/logic';
 import { CONTRACT_STATUSES, OFFER_STATUSES, TXN_STATUSES } from '@shared/schema';
-import { useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
+import { useBoot, useData, usePerms, useRows, useWrite, type R } from '@/lib/app';
 import { daysSince, fdate, money, todayIso } from '@/lib/format';
 import { Badge, Card, confirmDialog, cx, Drawer, Empty, ErrorBox, KV, Modal, PageHeader, promptDialog, StatusBadge, toast, Toggle } from '@/ui/core';
 import { DataTable, type Col } from '@/ui/DataTable';
@@ -138,9 +138,11 @@ export function ContractsPage() {
 // ---------- Transactions ----------
 export function TransactionsPage() {
   const { settings } = useBoot();
-  const d = useData('transactions', 'properties', 'contacts', 'buyers', 'contracts', 'dispositions', 'activities', 'revenue');
+  const d = useData('transactions', 'properties', 'contacts', 'buyers', 'contracts', 'dispositions', 'revenue');
   const perms = usePerms(), w = useWrite(), name = useNames();
-  const [open, setOpen] = useOpen(), [modal, setModal] = useState<{ record?: R } | null>(null), [item, setItem] = useState('');
+  const [open, setOpen] = useOpen();
+  const history = useRows('activities', { transaction_id: open });
+  const [modal, setModal] = useState<{ record?: R } | null>(null), [item, setItem] = useState('');
   const p = useMemo(() => new Map(d.properties.map(x => [x.id, x])), [d.properties]), c = useMemo(() => new Map(d.contacts.map(x => [x.id, x])), [d.contacts]), b = useMemo(() => new Map(d.buyers.map(x => [x.id, x])), [d.buyers]);
   const progress = (r: R) => { const cl: R[] = r.checklist ?? []; return cl.length ? Math.round((cl.filter(x => x.done).length / cl.length) * 100) : 0; };
   const cols: Col[] = [
@@ -188,7 +190,7 @@ export function TransactionsPage() {
           {contracts.length > 0 && <div><div className="section-t mb-2">Contracts</div><div className="border border-line rounded-md divide-y divide-line">{contracts.map(x => <Link key={x.id} to={`/contracts?open=${x.id}`} className="flex items-center gap-3 px-3 h-10 hover:bg-surface-2"><span className="font-medium flex-1">{x.type}</span><StatusBadge value={x.status} /></Link>)}</div></div>}
           <Attachments scope={{ transaction_id: t.id }} category="Title" title="Transaction documents" />
           {t.notes && <div><div className="section-t mb-1.5">Notes</div><div className="whitespace-pre-wrap text-fg-2">{t.notes}</div></div>}
-          <div><div className="section-t mb-2">Activity</div><Timeline activities={d.activities.filter(a => a.transaction_id === t.id)} scope={{ transaction_id: t.id, lead_id: t.lead_id, property_id: t.property_id }} canNote={canWrite} /></div>
+          <div><div className="section-t mb-2">Activity</div><Timeline activities={history.rows} scope={{ transaction_id: t.id, lead_id: t.lead_id, property_id: t.property_id }} loading={history.loading} canNote={canWrite} /></div>
         </div>}
       </Drawer>
       {modal && <RecordModal entity="transactions" open onClose={() => setModal(null)} record={modal.record} exclude={['status', 'closed_on', ...(modal.record ? ['property_id'] : [])]} />}

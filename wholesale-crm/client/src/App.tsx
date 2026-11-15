@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, Bell, Building2, Calculator, CalendarCheck, CheckSquare, FileSignature, FileText, HandCoins, Home, KanbanSquare, LayoutDashboard, LogOut, Megaphone, Menu as MenuIcon, MessageSquare, Moon, Phone, Plug, Plus, Search, Settings as SettingsIcon, Sparkles, Sun, Target, UserPlus, Users, UsersRound, Workflow, X } from 'lucide-react';
@@ -47,7 +47,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {open && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={onClose} />}
       <aside className={cx('fixed lg:static z-40 inset-y-0 left-0 w-[224px] shrink-0 bg-surface border-r border-line flex flex-col transition-transform lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="h-12 px-3.5 flex items-center gap-2.5 border-b border-line shrink-0">
-          <span className="w-6 h-6 rounded-md flex items-center justify-center text-white" style={{ background: 'var(--accent)' }}><Home size={13} strokeWidth={2.5} /></span>
+          <span className="w-6 h-6 rounded-md flex items-center justify-center text-white" style={{ background: 'var(--brand)' }}><Home size={13} strokeWidth={2.5} /></span>
           <span className="font-semibold truncate">{settings.company.name || org.name}</span>
         </div>
         <nav className="flex-1 overflow-y-auto scroll-thin px-2 py-2" aria-label="Main">
@@ -171,7 +171,7 @@ function Shell() {
         </header>
         <main className="flex-1 overflow-y-auto scroll-thin">
           <div className="mx-auto max-w-[1440px] p-4 sm:p-6">
-            <Routes>
+            <PageBoundary at={loc.pathname}><Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/leads" element={<Guard res="leads"><LeadsPage /></Guard>} /><Route path="/leads/:id" element={<Guard res="leads"><LeadDetail /></Guard>} />
               <Route path="/properties" element={<Guard res="properties"><PropertiesPage /></Guard>} /><Route path="/properties/:id" element={<Guard res="properties"><PropertyDetail /></Guard>} />
@@ -192,7 +192,7 @@ function Shell() {
               <Route path="/integrations" element={<Guard res="integrations"><IntegrationsPage /></Guard>} />
               <Route path="/settings" element={<Guard res="settings"><SettingsPage /></Guard>} />
               <Route path="*" element={<Empty title="Page not found" body="That page does not exist." action={<Link className="btn" to="/">Back to overview</Link>} />} />
-            </Routes>
+            </Routes></PageBoundary>
           </div>
         </main>
       </div>
@@ -201,6 +201,14 @@ function Shell() {
       <ActionHost />
     </div>
   );
+}
+/** Keeps the shell usable if a page throws while rendering; resets when the route changes. */
+class PageBoundary extends Component<{ at: string; children: ReactNode }, { error: Error | null; at: string }> {
+  state = { error: null as Error | null, at: this.props.at };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  static getDerivedStateFromProps(p: { at: string }, s: { at: string }) { return p.at !== s.at ? { error: null, at: p.at } : null; }
+  componentDidCatch(error: Error) { console.error(error); }
+  render() { return this.state.error ? <Empty title="This page hit an unexpected error" body={<>Your data is safe. Try reloading the page; if it keeps happening, note what you clicked and this message: <code className="text-xs">{this.state.error.message}</code></>} action={<button className="btn" onClick={() => window.location.reload()}>Reload</button>} /> : this.props.children; }
 }
 function Guard({ res, children }: { res: string; children: ReactNode }) {
   const perms = usePerms();
@@ -256,7 +264,7 @@ function Root() {
   const loc = useLocation();
   const publicRoute = /^\/(login|signup|accept-invite)/.test(loc.pathname);
   const boot = useBootQuery();
-  useEffect(() => { if (boot.data) { configureFormats(boot.data.settings); document.documentElement.style.setProperty('--brand', boot.data.settings.company.brandColor); document.title = `${boot.data.settings.company.name || 'Wholesale CRM'} · CRM`; } }, [boot.data]);
+  useEffect(() => { if (boot.data) { configureFormats(boot.data.settings); if (/^#[0-9a-f]{6}$/i.test(boot.data.settings.company.brandColor ?? '')) document.documentElement.style.setProperty('--brand', boot.data.settings.company.brandColor); document.title = `${boot.data.settings.company.name || 'Wholesale CRM'} · CRM`; } }, [boot.data]);
   if (publicRoute) return <Routes><Route path="/login" element={<Login />} /><Route path="/signup" element={<Signup />} /><Route path="/accept-invite/:token" element={<AcceptInvite />} /></Routes>;
   if (boot.isLoading) return <div className="h-full flex items-center justify-center text-fg-3 gap-2"><Spinner size={18} />Loading workspace…</div>;
   if (boot.error) return boot.error instanceof ApiError && boot.error.status === 401 ? <Navigate to="/login" replace /> : <div className="h-full flex items-center justify-center"><ErrorBox error={boot.error} retry={() => boot.refetch()} /></div>;

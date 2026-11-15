@@ -13,6 +13,7 @@ const env = (k: string) => (process.env[k] ?? '').trim();
 export const twilioReady = () => !!(env('TWILIO_ACCOUNT_SID') && env('TWILIO_AUTH_TOKEN') && env('TWILIO_FROM_NUMBER'));
 export const smtpReady = () => !!(env('SMTP_HOST') && env('SMTP_FROM'));
 export const aiReady = () => !!(env('ANTHROPIC_API_KEY') || env('ANTHROPIC_AUTH_TOKEN'));
+const twilioBase = () => env('TWILIO_API_BASE') || 'https://api.twilio.com';
 export const appUrl = () => env('APP_URL') || `http://localhost:${env('PORT') || 8787}`;
 
 export type IntegrationStatus = 'connected' | 'not_configured' | 'built_in' | 'planned';
@@ -61,7 +62,7 @@ export async function logIntegration(org: string, integration: string, level: 'i
 async function twilioSend(to: string, body: string) {
   const sid = env('TWILIO_ACCOUNT_SID');
   const digits = to.replace(/\D/g, '');
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+  const res = await fetch(`${twilioBase()}/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: 'POST', headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${env('TWILIO_AUTH_TOKEN')}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ To: digits.length === 10 ? `+1${digits}` : `+${digits}`, From: env('TWILIO_FROM_NUMBER'), Body: body }),
   });
@@ -84,7 +85,7 @@ export async function testIntegration(key: string): Promise<{ ok: boolean; messa
     if (key === 'twilio') {
       if (!twilioReady()) return { ok: false, message: 'Twilio environment variables are not set.' };
       const sid = env('TWILIO_ACCOUNT_SID');
-      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}.json`, { headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${env('TWILIO_AUTH_TOKEN')}`).toString('base64') } });
+      const res = await fetch(`${twilioBase()}/2010-04-01/Accounts/${sid}.json`, { headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${env('TWILIO_AUTH_TOKEN')}`).toString('base64') } });
       return res.ok ? { ok: true, message: 'Twilio credentials verified.' } : { ok: false, message: `Twilio rejected the credentials (HTTP ${res.status}).` };
     }
     if (key === 'smtp') {

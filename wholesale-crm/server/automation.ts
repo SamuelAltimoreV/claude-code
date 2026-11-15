@@ -72,7 +72,7 @@ export async function matchBuyersToDisposition(ctx: Ctx, dispositionId: string, 
   const d = await repo.get(ctx.org, 'dispositions', dispositionId);
   if (!d) throw new HttpError(404, 'Disposition not found');
   const property = await repo.get(ctx.org, 'properties', d.property_id);
-  const [buyers, interests, transactions] = await Promise.all([repo.list(ctx.org, 'buyers'), repo.list(ctx.org, 'buyer_interests'), repo.list(ctx.org, 'transactions')]);
+  const buyers = await repo.list(ctx.org, 'buyers'), interests = await repo.list(ctx.org, 'buyer_interests'), transactions = await repo.list(ctx.org, 'transactions');
   const stats = new Map(buyerStats({ ...EMPTY, buyers, buyer_interests: interests, transactions }).map(x => [x.buyer.id, x]));
   const existing = new Set(interests.filter(i => i.disposition_id === d.id).map(i => i.buyer_id));
   let added = 0;
@@ -273,7 +273,7 @@ async function processSequences(ctx: Ctx) {
   const due = await repo.list(ctx.org, 'enrollments', { status: 'Active' }, { extra: 'next_run_at <= now()', order: 'next_run_at asc', limit: 200 });
   const suppressions = due.length ? await repo.list(ctx.org, 'suppressions') : [];
   for (const en of due) {
-    const [seq, lead] = await Promise.all([repo.get(ctx.org, 'sequences', en.sequence_id), repo.get(ctx.org, 'leads', en.lead_id)]);
+    const seq = await repo.get(ctx.org, 'sequences', en.sequence_id), lead = await repo.get(ctx.org, 'leads', en.lead_id);
     const stop = (reason: string, status = 'Stopped') => repo.update(ctx.org, 'enrollments', en.id, { status, stop_reason: reason, next_run_at: null });
     if (!seq || !lead) { await stop('Sequence or lead no longer exists'); continue; }
     if (!seq.active) { await stop('Sequence turned off', 'Paused'); continue; }
@@ -366,8 +366,19 @@ export async function tickOrg(org: string) {
     return { sequences };
   });
 }
+let lastCleanup = 0;
+/** Hourly housekeeping: expired sessions and old log rows. Business records are never purged. */
+async function cleanup() {
+  if (Date.now() - lastCleanup < 36e5) return;
+  lastCleanup = Date.now();
+  await q('delete from sessions where expires_at < now()');
+  await q(`delete from automation_runs where started_at < now() - interval '180 days'`);
+  await q(`delete from integration_logs where created_at < now() - interval '90 days'`);
+  await q(`delete from notifications where read = true and created_at < now() - interval '60 days'`);
+}
 export async function tickAll() {
   for (const o of (await q('select id from organizations')).rows) {
     try { await tickOrg(o.id); } catch (e) { console.error('scheduler tick failed for org', o.id, e); }
   }
+  try { await cleanup(); } catch (e) { console.error('scheduler cleanup failed', e); }
 }

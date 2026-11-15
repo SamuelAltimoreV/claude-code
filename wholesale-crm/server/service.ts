@@ -42,6 +42,18 @@ function ownsRecord(ctx: Ctx, name: string, row: R) {
   const of = ENTITY[name].ownerField;
   return !of || !ctx.user || row[of] === ctx.user.id || (name === 'saved_views' && row.shared);
 }
+/** Record-level check for roles limited to their own records. Sellers, activities and enrollments inherit lead ownership. */
+async function canTouch(ctx: Ctx, name: string, row: R, op: 'read' | 'write'): Promise<boolean> {
+  if (!ctx.user) return true;
+  const e = ENTITY[name];
+  if (e.ownerField) return row[e.ownerField] === ctx.user.id || (op === 'read' && name === 'saved_views' && !!row.shared);
+  if (e.resource === 'leads') {
+    if (row.created_by === ctx.user.id) return true;
+    const [col, val] = name === 'contacts' ? ['contact_id', row.id] : ['id', row.lead_id];
+    return !!val && !!(await one(`select 1 from leads where org_id = $1 and owner_id = $2 and ${col} = $3 limit 1`, [ctx.org, ctx.user.id, val]));
+  }
+  return true;
+}
 
 export async function listFor(ctx: Ctx, name: string, where: R = {}): Promise<R[]> {
   const e = repo.ent(name);
@@ -63,7 +75,7 @@ export async function getFor(ctx: Ctx, name: string, id: string, op: 'read' | 'w
   const a = assertAccess(ctx, e.resource, op);
   const row = await repo.get(ctx.org, name, id);
   if (!row) throw new HttpError(404, `${e.label} not found`);
-  if (a === 'own' && !ownsRecord(ctx, name, row)) throw new HttpError(403, `You can only ${op === 'read' ? 'view' : 'change'} ${e.plural.toLowerCase()} assigned to you.`);
+  if (a === 'own' && !(await canTouch(ctx, name, row, op))) throw new HttpError(403, `You can only ${op === 'read' ? 'view' : 'change'} ${e.plural.toLowerCase()} assigned to you.`);
   return row;
 }
 

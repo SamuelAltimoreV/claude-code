@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, MessageSquare, Phone, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare, Pencil, Phone, Plus, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { contactName } from '@shared/logic';
 import { COMM_TYPES } from '@shared/schema';
-import { useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
+import { api, useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
 import { fdate, fdatetime, ftime, localDay, todayIso } from '@/lib/format';
-import { Badge, Card, confirmDialog, cx, Empty, ErrorBox, Loading, PageHeader, Segmented, StatusBadge, Tabs, toast } from '@/ui/core';
+import { Badge, Card, confirmDialog, cx, Drawer, Empty, ErrorBox, KV, Loading, PageHeader, Segmented, Spinner, StatusBadge, Tabs, toast, useBusy } from '@/ui/core';
 import { DataTable, type Col } from '@/ui/DataTable';
 import { RecordModal } from '@/ui/Form';
 import { newTask, openAction } from '@/ui/actions';
@@ -16,7 +16,7 @@ export function CommunicationsPage() {
   const { settings, users, providers } = useBoot();
   const d = useData('communications', 'contacts', 'buyers', 'leads', 'templates', 'suppressions');
   const perms = usePerms(), w = useWrite(), nav = useNavigate(), name = useNames();
-  const [tab, setTab] = useState<'log' | 'templates' | 'compliance'>('log'), [tpl, setTpl] = useState<R | null | 'new'>(null), [sup, setSup] = useState(false);
+  const [tab, setTab] = useState<'log' | 'templates' | 'compliance'>('log'), [tpl, setTpl] = useState<R | null | 'new'>(null), [sup, setSup] = useState(false), [view, setView] = useState<string | null>(null), [editComm, setEditComm] = useState<R | null>(null);
   const c = useMemo(() => new Map(d.contacts.map(x => [x.id, x])), [d.contacts]), b = useMemo(() => new Map(d.buyers.map(x => [x.id, x])), [d.buyers]);
   const who = (r: R) => (r.contact_id ? contactName(c.get(r.contact_id)) : b.get(r.buyer_id)?.name ?? '—');
   const cols: Col[] = [
@@ -36,7 +36,7 @@ export function CommunicationsPage() {
       </PageHeader>
       <div className="grid sm:grid-cols-3 gap-3 mb-4">{([['SMS (Twilio)', providers.sms], ['Email (SMTP)', providers.email], ['Calling platform', false]] as [string, boolean][]).map(([l, on]) => <div key={l} className="card px-3.5 py-2.5 flex items-center gap-2.5"><span className={cx('w-2 h-2 rounded-full', on ? 'bg-good' : 'bg-surface-3 border border-line-strong')} /><span className="font-medium">{l}</span><span className="text-fg-3 flex-1 truncate">{on ? 'Connected' : l.startsWith('Calling') ? 'No connector — log calls manually' : 'Not connected — sending disabled'}</span>{!on && <Link className="link text-xs" to="/integrations">Set up</Link>}</div>)}</div>
       <Tabs className="mb-4" value={tab} onChange={setTab} tabs={[{ id: 'log', label: 'Conversation log', count: d.communications.length }, { id: 'templates', label: 'Templates', count: d.templates.length }, { id: 'compliance', label: 'Compliance & consent' }]} />
-      {tab === 'log' && <DataTable rows={d.communications} cols={cols} loading={d.loading} viewKey="communications" exportName="communications" initialSort={{ key: 'at', dir: -1 }} onRowClick={r => { const lead = r.lead_id ?? d.leads.find(l => l.contact_id === r.contact_id)?.id; nav(lead ? `/leads/${lead}` : r.buyer_id ? `/buyers/${r.buyer_id}` : '/communications'); }}
+      {tab === 'log' && <DataTable rows={d.communications} cols={cols} loading={d.loading} viewKey="communications" exportName="communications" initialSort={{ key: 'at', dir: -1 }} onRowClick={r => setView(r.id)}
         filters={[{ key: 'type', label: 'Type', options: COMM_TYPES.map(s => ({ value: s, label: s })), get: r => r.type }, { key: 'dir', label: 'Direction', options: ['Outbound', 'Inbound', 'Missed'].map(s => ({ value: s, label: s })), get: r => r.direction },
           { key: 'outcome', label: 'Outcome', options: settings.callOutcomes.map(s => ({ value: s, label: s })), get: r => r.outcome }, { key: 'user', label: 'Team member', options: users.map(u => ({ value: u.id, label: u.name })), get: r => r.user_id }]}
         empty={<Empty icon={<Phone size={18} />} title="No conversations logged yet" body="Log calls, texts, emails and visits so every lead has a complete history." />} />}
@@ -64,8 +64,44 @@ export function CommunicationsPage() {
           <Card title="Do-not-contact records" pad={false}>{dnc.length === 0 ? <div className="p-6 text-center text-fg-3">Nobody is marked do-not-contact.</div> : <div className="divide-y divide-line">{dnc.map(x => <div key={x.id} className="flex items-center gap-3 px-4 h-10"><span className="font-medium">{x.name}</span><Badge>{x.kind}</Badge><span className="text-fg-3 flex-1 truncate">{[x.phone, x.email].filter(Boolean).join(' · ')}</span><span className="text-[11px] text-fg-3">{fdate(x.at)}</span></div>)}</div>}</Card>
         </div>
       </div>}
+      {(() => { const cm = d.communications.find(x => x.id === view); const leadId = cm && (cm.lead_id ?? d.leads.find(l => l.contact_id === cm.contact_id)?.id); return (
+        <Drawer open={!!cm} onClose={() => setView(null)} width={540} title={cm ? `${cm.type} · ${who(cm)}` : ''} actions={cm && perms.write('communications') && <button className="btn btn-ghost btn-sm" onClick={() => setEditComm(cm)}><Pencil size={12} />Edit notes</button>}>
+          {cm && <div className="p-5 space-y-5">
+            <div className="flex flex-wrap items-center gap-2"><Badge tone={cm.direction === 'Inbound' ? 'green' : cm.direction === 'Missed' ? 'red' : 'gray'}>{cm.direction}</Badge>{cm.outcome && <Badge tone="blue">{cm.outcome}</Badge>}{leadId && <button className="link" onClick={() => nav(`/leads/${leadId}`)}>Open lead</button>}{cm.buyer_id && <button className="link" onClick={() => nav(`/buyers/${cm.buyer_id}`)}>Open buyer</button>}</div>
+            <KV rows={[['When', fdatetime(cm.at)], ['Duration', cm.duration_min != null ? `${cm.duration_min} min` : null], ['Team member', name(cm.user_id)], ['Delivery', !cm.status || cm.status === 'Logged' ? 'Logged manually' : `${cm.status}${cm.provider ? ` via ${cm.provider}` : ''}`], ['Next action', cm.next_action], ['Follow-up', cm.follow_up_at ? fdatetime(cm.follow_up_at) : null]]} />
+            {cm.subject && <div><div className="section-t mb-1.5">Subject</div><div>{cm.subject}</div></div>}
+            <div><div className="section-t mb-1.5">Notes / message</div>{cm.body ? <div className="whitespace-pre-wrap leading-relaxed">{cm.body}</div> : <span className="text-fg-3">No notes recorded.</span>}</div>
+            <div><div className="section-t mb-1.5">Transcript</div>{cm.transcript ? <div className="whitespace-pre-wrap max-h-64 overflow-auto scroll-thin p-3 rounded-md bg-surface-2 border border-line text-xs leading-relaxed">{cm.transcript}</div> : <p className="text-fg-3">No transcript attached.{perms.write('communications') && <> <button className="link" onClick={() => setEditComm(cm)}>Add one</button> to summarize the call with AI.</>}</p>}</div>
+            <CallSummary comm={cm} leadId={leadId} />
+          </div>}
+        </Drawer>); })()}
+      <RecordModal entity="communications" open={!!editComm} onClose={() => setEditComm(null)} record={editComm} fields={['outcome', 'body', 'next_action', 'transcript']} size="md" title="Edit conversation notes" />
       <RecordModal entity="templates" open={!!tpl} onClose={() => setTpl(null)} record={tpl === 'new' ? null : tpl} size="md" />
       <RecordModal entity="suppressions" open={sup} onClose={() => setSup(false)} fields={['kind', 'value', 'reason']} defaults={{ source: 'Manual' }} size="md" title="Add to suppression list" />
+    </div>
+  );
+}
+
+function CallSummary({ comm, leadId }: { comm: R; leadId?: string | null }) {
+  const { providers } = useBoot();
+  const [data, setData] = useState<{ id: string; r: R } | null>(null);
+  const { busy, run } = useBusy();
+  const r = data && data.id === comm.id ? data.r : null;
+  return (
+    <div className="rounded-lg border border-line">
+      <div className="flex items-center justify-between gap-2 px-3 h-10 border-b border-line"><span className="font-semibold inline-flex items-center gap-1.5"><Sparkles size={13} />AI call summary</span>
+        {providers.ai && comm.transcript && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => setData({ id: comm.id, r: await api('POST', '/api/ai/call-summary', { commId: comm.id }) }))}>{busy && <Spinner size={12} />}{r ? 'Regenerate' : 'Summarize'}</button>}</div>
+      <div className="p-3">
+        {!providers.ai ? <p className="text-fg-3">Not connected. Add an Anthropic API key under Integrations to summarize transcripts.</p>
+          : !comm.transcript ? <p className="text-fg-3">Attach a transcript to this conversation to generate a summary, sentiment, key details and action items.</p>
+          : busy ? <p className="flex items-center gap-2 text-fg-3"><Spinner />Reading the transcript…</p>
+          : !r ? <p className="text-fg-3">Generates a summary from the transcript above. Nothing is changed until you create a suggested task.</p>
+          : <div className="space-y-3"><p className="leading-relaxed">{r.summary}</p><div><Badge>Sentiment: {r.seller_sentiment}</Badge></div>
+            {r.important_details?.length > 0 && <div><div className="text-[11px] text-fg-3 mb-1">Important details</div><ul className="list-disc ml-4 space-y-0.5">{r.important_details.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></div>}
+            {r.action_items?.length > 0 && <div><div className="text-[11px] text-fg-3 mb-1">Suggested action items</div><div className="space-y-1.5">{r.action_items.map((x: R, i: number) => <div key={i} className="flex items-center gap-2 p-2 rounded-md border border-line"><span className="flex-1">{x.title}</span><button className="btn btn-sm" onClick={() => newTask({ title: x.title, category: x.category, lead_id: leadId ?? null, due_at: new Date(Date.now() + (x.due_in_days ?? 1) * 864e5).toISOString() })}>Create task</button></div>)}</div></div>}
+            {r.follow_up_recommendation && <div><div className="text-[11px] text-fg-3 mb-1">Follow-up recommendation</div><p>{r.follow_up_recommendation}</p></div>}
+            <p className="text-[11px] text-fg-3">AI output can be wrong — check it against the transcript.</p></div>}
+      </div>
     </div>
   );
 }
@@ -91,8 +127,8 @@ export function TasksPage() {
   const dayMap = useMemo(() => { const m = new Map<string, R[]>(); for (const t of tasks) if (t.due_at && t.status !== 'Cancelled') { const k = localDay(t.due_at); (m.get(k) ?? m.set(k, []).get(k)!).push(t); } return m; }, [tasks]);
   const Chip = ({ t }: { t: R }) => <button onClick={() => openAction({ type: 'record', entity: 'tasks', record: t, exclude: ['offer_id', 'contract_id'] })} title={t.title} className={cx('w-full text-left px-1.5 py-0.5 rounded text-[11px] truncate border', t.status === 'Done' ? 'line-through text-fg-3 border-transparent' : t.due_at < now ? 'border-critical/40 bg-critical/5 text-t-red' : 'border-line bg-surface-2 hover:border-line-strong')}><span className="tnum text-fg-3 mr-1">{ftime(t.due_at).replace(':00', '').replace(' ', '').toLowerCase()}</span>{t.title}</button>;
   const DayCell = ({ day, dim, tall }: { day: Date; dim?: boolean; tall?: boolean }) => { const k = iso(day), list = (dayMap.get(k) ?? []).sort(byDue), cl = closings.filter(t => t.closing_date === k); return (
-    <div className={cx('border-r border-b border-line p-1.5 min-w-0', tall ? 'min-h-[340px]' : 'min-h-[104px]', dim && 'bg-surface-2/60')}>
-      <div className="flex items-center justify-between mb-1"><span className={cx('text-[11px] tnum w-5 h-5 inline-flex items-center justify-center rounded-full', k === today ? 'bg-accent text-accent-fg font-semibold' : dim ? 'text-fg-3' : 'text-fg-2')}>{day.getDate()}</span>{perms.write('tasks') && <button className="text-fg-3 hover:text-fg opacity-0 hover:opacity-100 focus:opacity-100" aria-label={`Add task on ${k}`} onClick={() => { const dt = new Date(day); dt.setHours(9, 0, 0, 0); newTask({ due_at: dt.toISOString() }); }}><Plus size={12} /></button>}</div>
+    <div className={cx('group border-r border-b border-line p-1.5 min-w-0', tall ? 'min-h-[340px]' : 'min-h-[104px]', dim && 'bg-surface-2/60')}>
+      <div className="flex items-center justify-between mb-1"><span className={cx('text-[11px] tnum w-5 h-5 inline-flex items-center justify-center rounded-full', k === today ? 'bg-accent text-accent-fg font-semibold' : dim ? 'text-fg-3' : 'text-fg-2')}>{day.getDate()}</span>{perms.write('tasks') && <button className="text-fg-3 hover:text-fg opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Add task on ${k}`} onClick={() => { const dt = new Date(day); dt.setHours(9, 0, 0, 0); newTask({ due_at: dt.toISOString() }); }}><Plus size={12} /></button>}</div>
       <div className="space-y-0.5">{cl.map(t => <Link key={t.id} to={`/transactions?open=${t.id}`} className="block px-1.5 py-0.5 rounded text-[11px] truncate bg-good/10 text-t-green" title={`Closing: ${p.get(t.property_id)?.address}`}>Closing · {p.get(t.property_id)?.address}</Link>)}{list.slice(0, tall ? 30 : 3).map(t => <Chip key={t.id} t={t} />)}{!tall && list.length > 3 && <button className="text-[11px] text-fg-3 hover:text-fg px-1.5" onClick={() => { setCursor(day); setView('week'); }}>+{list.length - 3} more</button>}</div>
     </div>); };
   const weekStart = startOfWeek(cursor), monthStart = startOfWeek(new Date(cursor.getFullYear(), cursor.getMonth(), 1));

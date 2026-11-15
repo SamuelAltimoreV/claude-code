@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, ChevronDown, Info, Loader2, X } from 'lucide-react';
 import { ApiError } from '@/lib/app';
@@ -86,19 +86,35 @@ export function Drawer({ open, onClose, title, children, width = 520, actions }:
 
 export interface MenuItem { label: string; icon?: ReactNode; onClick?: () => void; danger?: boolean; disabled?: boolean; divider?: boolean; hint?: string }
 export function Menu({ trigger, items, align = 'right', width = 200 }: { trigger: ReactNode; items: MenuItem[]; align?: 'left' | 'right'; width?: number }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, [open]);
+  const [open, setOpen] = useState(false), [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null), menu = useRef<HTMLDivElement>(null);
+  // The menu is rendered in a fixed layer on <body> so tables, drawers and modals can never clip it.
+  useLayoutEffect(() => {
+    if (!open || !anchor.current) return;
+    const place = () => {
+      const r = anchor.current!.getBoundingClientRect(), h = menu.current?.offsetHeight ?? 0, w = Math.min(width, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(align === 'right' ? r.right - w : r.left, window.innerWidth - w - 8));
+      const below = r.bottom + 4, top = below + h > window.innerHeight - 8 && r.top - h - 4 > 8 ? r.top - h - 4 : below;
+      setPos({ top, left });
+    };
+    place();
+    const close = (e: Event) => { if (!(e.target instanceof Node) || !menu.current?.contains(e.target)) setOpen(false); };
+    const down = (e: MouseEvent) => { const t = e.target as Node; if (!anchor.current?.contains(t) && !menu.current?.contains(t)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', down); window.addEventListener('scroll', close, true); window.addEventListener('resize', place); window.addEventListener('keydown', key, true);
+    return () => { document.removeEventListener('mousedown', down); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', place); window.removeEventListener('keydown', key, true); };
+  }, [open, align, width, items.length]);
   return (
-    <div className="relative inline-flex" ref={ref}>
-      <span onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>{trigger}</span>
-      {open && <div className={cx('absolute top-full mt-1 z-30 card shadow-[var(--shadow)] py-1 anim-pop', align === 'right' ? 'right-0' : 'left-0')} style={{ width }} role="menu">
-        {items.map((it, i) => it.divider ? <div key={i} className="my-1 border-t border-line" /> : (
-          <button key={i} role="menuitem" disabled={it.disabled} title={it.hint} onClick={e => { e.stopPropagation(); setOpen(false); it.onClick?.(); }}
-            className={cx('w-full flex items-center gap-2 px-3 h-8 text-left text-[13px] hover:bg-surface-2 disabled:opacity-45 disabled:cursor-not-allowed', it.danger && 'text-t-red')}>{it.icon}<span className="truncate">{it.label}</span></button>
-        ))}
-      </div>}
-    </div>
+    <span className="inline-flex" ref={anchor} onClick={e => { e.stopPropagation(); setOpen(o => !o); }}>
+      {trigger}
+      {open && createPortal(
+        <div ref={menu} role="menu" className="fixed z-[70] card shadow-[var(--shadow)] py-1 anim-pop max-h-[70vh] overflow-y-auto scroll-thin" style={{ width: Math.min(width, window.innerWidth - 16), top: pos?.top ?? -9999, left: pos?.left ?? -9999 }} onClick={e => e.stopPropagation()}>
+          {items.map((it, i) => it.divider ? <div key={i} className="my-1 border-t border-line" /> : (
+            <button key={i} role="menuitem" disabled={it.disabled} title={it.hint} onClick={e => { e.stopPropagation(); setOpen(false); it.onClick?.(); }}
+              className={cx('w-full flex items-center gap-2 px-3 h-8 text-left text-[13px] hover:bg-surface-2 disabled:opacity-45 disabled:cursor-not-allowed', it.danger && 'text-t-red')}>{it.icon}<span className="truncate">{it.label}</span></button>
+          ))}
+        </div>, document.body)}
+    </span>
   );
 }
 

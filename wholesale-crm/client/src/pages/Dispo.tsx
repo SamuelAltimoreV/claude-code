@@ -5,7 +5,7 @@ import { compStats } from '@shared/calc';
 import { canContact, matchBuyer, propertyLabel, type MatchResult } from '@shared/logic';
 import { buyerStats, EMPTY } from '@shared/metrics';
 import { BUYER_CLASSES, BUYER_STRATEGIES, DISPO_STATUSES, INTEREST_STATUSES } from '@shared/schema';
-import { api, useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
+import { api, useBoot, useData, usePerms, useRows, useWrite, type R } from '@/lib/app';
 import { ago, daysSince, fdate, fdatetime, money, num, pct } from '@/lib/format';
 import { Badge, Card, confirmDialog, cx, Empty, ErrorBox, Field, KV, Loading, Menu, Modal, PageHeader, promptDialog, Spinner, StatusBadge, Tabs, toast, useBusy } from '@/ui/core';
 import { DataTable, type Col } from '@/ui/DataTable';
@@ -87,7 +87,8 @@ export function BuyersPage() {
 
 export function BuyerDetail() {
   const { id } = useParams();
-  const d = useData('buyers', 'buyer_interests', 'transactions', 'dispositions', 'properties', 'activities');
+  const d = useData('buyers', 'buyer_interests', 'transactions', 'dispositions', 'properties');
+  const history = useRows('activities', { buyer_id: id });
   const perms = usePerms(), w = useWrite(), nav = useNavigate(), name = useNames();
   const stats = useBuyerStats(d);
   const [edit, setEdit] = useState(false);
@@ -114,7 +115,7 @@ export function BuyerDetail() {
             {b.notes && <div className="mt-3 pt-3 border-t border-line whitespace-pre-wrap text-fg-2">{b.notes}</div>}
           </Card>
           <Card title="Deals presented" pad={false}>{ints.length === 0 ? <div className="p-6 text-center text-fg-3">This buyer has not been added to any disposition campaign yet.</div> : <table className="w-full"><thead><tr>{['Property', 'Status', 'Match', 'Offer', 'Sent', 'Feedback'].map(h => <th key={h} className="th">{h}</th>)}</tr></thead><tbody>{ints.map(i => { const dd = dp.get(i.disposition_id); return <tr key={i.id} className="row cursor-pointer" onClick={() => nav(`/dispositions/${i.disposition_id}`)}><td className="td font-medium">{pp.get(dd?.property_id)?.address ?? '—'}</td><td className="td"><StatusBadge value={i.status} /></td><td className="td tnum">{i.match_score ?? '—'}</td><td className="td tnum">{money(i.offer_amount)}</td><td className="td">{i.sent_at ? ago(i.sent_at) : '—'}</td><td className="td text-fg-2">{i.feedback}</td></tr>; })}</tbody></table>}</Card>
-          <Card title="Activity"><Timeline activities={d.activities.filter(a => a.buyer_id === b.id)} scope={{ buyer_id: b.id }} canNote={canWrite} /></Card>
+          <Card title="Activity"><Timeline activities={history.rows} scope={{ buyer_id: b.id }} loading={history.loading} canNote={canWrite} /></Card>
         </div>
         <div className="space-y-4 min-w-0">
           <Card title="Contact"><KV rows={[['Phone', b.phone && <a className="link" href={`tel:${b.phone}`}>{b.phone}</a>], ['Email', b.email && <a className="link break-all" href={`mailto:${b.email}`}>{b.email}</a>], ['Prefers', b.preferred_contact], ['Website', b.website], ['Our rep', name(b.rep_id)]]} />
@@ -169,7 +170,8 @@ function MatchReasons({ m }: { m: MatchResult }) {
 
 export function DispositionDetail() {
   const { id } = useParams();
-  const d = useData('dispositions', 'properties', 'buyers', 'buyer_interests', 'transactions', 'comps', 'activities', 'contracts');
+  const d = useData('dispositions', 'properties', 'buyers', 'buyer_interests', 'transactions', 'comps');
+  const history = useRows('activities', { disposition_id: id });
   const perms = usePerms(), w = useWrite(), nav = useNavigate();
   const stats = useBuyerStats(d);
   const [tab, setTab] = useState<'interest' | 'find' | 'offers' | 'history'>('interest'), [sel, setSel] = useState<Set<string>>(new Set()), [send, setSend] = useState(false), [edit, setEdit] = useState(false), [offerFor, setOfferFor] = useState<R | null>(null), [expanded, setExpanded] = useState<string | null>(null), [minScore, setMinScore] = useState(50), [text, setText] = useState('');
@@ -234,7 +236,7 @@ export function DispositionDetail() {
             <tbody>{offers.map((i, n) => { const b = bm.get(i.buyer_id), s = stats.get(i.buyer_id), fee = dp.purchase_price != null ? i.offer_amount - dp.purchase_price : null; return <tr key={i.id} className={cx('row', dp.selected_buyer_id === i.buyer_id && 'bg-accent-soft')}><td className="td font-medium">{n === 0 && <Trophy size={12} className="inline mr-1 text-t-amber" />}{b?.name}</td><td className="td tnum font-medium">{money(i.offer_amount)}</td><td className="td tnum">{money(fee)}</td><td className={cx('td tnum', fee != null && dp.fee_target != null && fee < dp.fee_target && 'text-t-red')}>{fee != null && dp.fee_target != null ? money(fee - dp.fee_target) : '—'}</td><td className="td tnum">{money(i.emd)}</td><td className="td">{fdate(i.proposed_close)}</td><td className="td"><StatusBadge value={b?.pof_status} /></td><td className="td tnum">{s?.closed ?? 0}</td><td className="td tnum">{pct(s?.reliability)}</td>
               <td className="td text-right">{dp.selected_buyer_id === i.buyer_id ? <Badge tone="green">Selected</Badge> : canWrite && !done && dp.status !== 'Assigned' && <button className="btn btn-sm" disabled={busy} onClick={() => choose(i)}>Select buyer</button>}</td></tr>; })}</tbody></table>
             <p className="px-4 py-2.5 text-[11px] text-fg-3 border-t border-line">The highest offer is not always the best one: weigh proof of funds, earnest money, closing date and each buyer's history of actually closing.</p></div>)}
-          {tab === 'history' && <div className="p-4"><Timeline activities={d.activities.filter(a => a.disposition_id === dp.id)} scope={{ disposition_id: dp.id, property_id: dp.property_id }} canNote={canWrite} /></div>}
+          {tab === 'history' && <div className="p-4"><Timeline activities={history.rows} scope={{ disposition_id: dp.id, property_id: dp.property_id }} loading={history.loading} canNote={canWrite} /></div>}
         </div>
         <div className="space-y-4 min-w-0">
           <Card title="Deal summary">{dp.summary ? <p className="whitespace-pre-wrap leading-relaxed">{dp.summary}</p> : <p className="text-fg-3">No summary yet. Add the pitch buyers will read.</p>}

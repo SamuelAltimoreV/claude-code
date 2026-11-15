@@ -67,10 +67,10 @@ export const WEBHOOK_EVENTS = ['lead.created', 'lead.stage_changed', 'lead.assig
 
 export interface AutomationTemplate { name: string; description: string; trigger: string; trigger_config?: Record<string, any>; conditions?: Condition[]; actions: ActionStep[]; enabled?: boolean }
 export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
-  { name: 'Speed to lead: call new leads within the hour', description: 'Creates an urgent call task for the owner the moment a lead arrives.', trigger: 'lead.created', enabled: true,
-    actions: [{ type: 'create_task', params: { title: 'Call new lead: {{first_name}} {{last_name}}', category: 'Call seller', dueInDays: 0, priority: 'Urgent', assign: 'owner' } }] },
   { name: 'Round-robin unassigned leads', description: 'Assigns leads that arrive without an owner to the acquisition rep with the lightest workload.', trigger: 'lead.created', enabled: true,
     conditions: [{ field: 'owner_id', op: 'empty' }], actions: [{ type: 'assign_lead', params: { assign: 'round_robin:Acquisition Representative' } }] },
+  { name: 'Speed to lead: call new leads within the hour', description: 'Creates an urgent call task for the owner the moment a lead arrives.', trigger: 'lead.created', enabled: true,
+    actions: [{ type: 'create_task', params: { title: 'Call new lead: {{first_name}} {{last_name}}', category: 'Call seller', dueInDays: 0, priority: 'Urgent', assign: 'owner' } }] },
   { name: 'Qualified → underwriting kickoff', description: 'When a lead is qualified: create an underwriting task, notify the owner and make sure a follow-up exists.', trigger: 'lead.stage_changed', trigger_config: { to: 'qualified' }, enabled: true,
     actions: [
       { type: 'create_task', params: { title: 'Underwrite {{property_address}}', category: 'Underwrite property', dueInDays: 1, priority: 'High', assign: 'owner' } },

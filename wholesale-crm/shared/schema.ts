@@ -267,6 +267,7 @@ export const ENTITIES: Entity[] = [
       ref('contact_id', 'Seller', 'contacts'), ref('buyer_id', 'Buyer', 'buyers'), ref('lead_id', 'Lead', 'leads'), ref('property_id', 'Property', 'properties'),
       select('outcome', 'Outcome', 'callOutcomes'), int('duration_min', 'Duration (min)'),
       text('subject', 'Subject'), long('body', 'Notes / message'), datetime('at', 'Date & time', { idx: true }),
+      long('transcript', 'Transcript', { help: 'Optional. Paste the transcript of a call that was recorded with the consent the law requires, to summarize it with AI.' }),
       ref('user_id', 'Team member', 'users'), text('next_action', 'Next action'), datetime('follow_up_at', 'Follow-up date'),
       select('status', 'Delivery', ['Logged', 'Queued', 'Sent', 'Failed'], { def: 'Logged', system: true }), text('provider', 'Provider', { system: true }),
     ],

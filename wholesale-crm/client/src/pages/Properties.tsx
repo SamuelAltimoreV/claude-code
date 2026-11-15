@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Calculator, ChevronLeft, Home, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
 import { compStats } from '@shared/calc';
 import { contactName, propertyLabel } from '@shared/logic';
-import { useBoot, useData, usePerms, useWrite, type R } from '@/lib/app';
+import { useBoot, useData, usePerms, useRows, useWrite, type R } from '@/lib/app';
 import { fdate, money, num } from '@/lib/format';
 import { Badge, Card, Collapse, confirmDialog, Empty, ErrorBox, KV, Loading, PageHeader, StatusBadge, toast } from '@/ui/core';
 import { DataTable, type Col } from '@/ui/DataTable';
@@ -61,7 +61,8 @@ export function PropertiesPage() {
 export function PropertyDetail() {
   const { id } = useParams();
   const { settings } = useBoot();
-  const d = useData('properties', 'contacts', 'leads', 'offers', 'contracts', 'transactions', 'dispositions', 'buyer_interests', 'buyers', 'comps', 'analyses', 'activities', 'property_contacts', 'markets');
+  const d = useData('properties', 'contacts', 'leads', 'offers', 'contracts', 'transactions', 'dispositions', 'buyer_interests', 'buyers', 'comps', 'analyses', 'property_contacts', 'markets');
+  const history = useRows('activities', { property_id: id });
   const perms = usePerms(), w = useWrite(), nav = useNavigate();
   const [edit, setEdit] = useState(false), [comp, setComp] = useState<R | null | 'new'>(null), [addOwner, setAddOwner] = useState(false), [ownerPick, setOwnerPick] = useState<string | null>(null);
   const p = d.properties.find(x => x.id === id);
@@ -105,7 +106,7 @@ export function PropertyDetail() {
               <tbody>{comps.map(x => <tr key={x.id} className="row cursor-pointer" onClick={() => canWrite && setComp(x)}><td className="td font-medium">{x.address}</td><td className="td tnum">{money(x.sale_price)}</td><td className="td">{fdate(x.sale_date)}</td><td className="td tnum">{num(x.sqft)}</td><td className="td tnum">{x.sqft ? money(x.sale_price / x.sqft) : '—'}</td><td className="td">{x.beds ?? '—'}/{x.baths ?? '—'}</td><td className="td tnum">{x.distance != null ? `${x.distance} mi` : '—'}</td><td className="td text-fg-2">{x.notes}</td></tr>)}</tbody></table></div>}
             <div className="px-4 py-2 border-t border-line text-[11px] text-fg-3">Comps are entered manually and are not verified against MLS or public records.</div>
           </Card>
-          <Card title="Property history"><Collapse title="Show all activity for this property" count={d.activities.filter(a => a.property_id === p.id).length} defaultOpen><Timeline activities={d.activities.filter(a => a.property_id === p.id)} scope={{ property_id: p.id }} loading={d.loading} canNote={canWrite} /></Collapse></Card>
+          <Card title="Property history"><Collapse title="Show all activity for this property" count={history.rows.length} defaultOpen><Timeline activities={history.rows} scope={{ property_id: p.id }} loading={history.loading} canNote={canWrite} /></Collapse></Card>
         </div>
         <div className="space-y-4 min-w-0">
           <Card title="Sellers & ownership" actions={canWrite && <button className="btn btn-ghost btn-sm" onClick={() => setAddOwner(true)}><Plus size={12} />Link seller</button>}>

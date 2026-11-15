@@ -114,7 +114,7 @@ export const DEFAULT_STAGES: Stage[] = [
 
 export function defaultSettings(companyName = 'My Wholesaling Company'): OrgSettings {
   return {
-    company: { name: companyName, phone: '', email: '', address: '', website: '', brandColor: '#3b5bdb', timezone: 'America/New_York' },
+    company: { name: companyName, phone: '', email: '', address: '', website: '', brandColor: '#4353c9', timezone: 'America/New_York' },
     formats: { currency: 'USD', dateFormat: 'MM/DD/YYYY' },
     stages: DEFAULT_STAGES,
     leadStatuses: ['High motivation', 'Medium motivation', 'Low motivation', 'Unqualified', 'Follow-up required', 'Do not contact', 'Under contract', 'Closed'],

@@ -54,14 +54,39 @@ export async function leadSummary(ctx: Ctx, leadId: string) {
     offers: offers.map(o => pick(o, ['from_party', 'amount', 'status', 'offer_date', 'notes'])), open_tasks: tasks.filter(t => t.status !== 'Done' && t.status !== 'Cancelled').map(t => pick(t, ['title', 'due_at'])),
   };
   try {
-    const res = await client().messages.parse({
-      model: MODEL, max_tokens: 8000,
+    const res = await client().beta.messages.parse({
+      model: MODEL, max_tokens: 8000, ...FALLBACK,
       system: 'You summarize motivated-seller leads for a real estate wholesaling acquisitions team. Use only facts present in the CRM record provided. If something is not in the record, say it is not recorded — never guess or invent details. Recommended next steps are suggestions a person will review before anything happens. If the seller is marked do-not-contact, do not recommend any outreach.',
       messages: [{ role: 'user', content: `CRM record (JSON):\n${JSON.stringify(record)}\n\nSummarize this lead.` }],
       output_config: { effort: 'medium', format: zodOutputFormat(LeadSummary) },
     });
     if (res.stop_reason === 'refusal' || !res.parsed_output) throw new HttpError(502, 'The AI could not produce a summary for this lead.');
     return { ...res.parsed_output, generated_at: new Date().toISOString(), model: res.model, based_on: { conversations: comms.length, activities: activities.length, offers: offers.length } };
+  } catch (e) { fail(e); }
+}
+
+const CallSummary = z.object({
+  summary: z.string().describe('What was discussed, in 2-4 sentences'),
+  seller_sentiment: z.enum(['positive', 'neutral', 'hesitant', 'negative', 'unknown']),
+  important_details: z.array(z.string()).describe('Facts stated on the call: price, timeline, condition, liens, decision makers'),
+  action_items: z.array(z.object({ title: z.string(), due_in_days: z.number(), category: z.enum(['Call seller', 'Send offer', 'Follow up', 'Underwrite property', 'Research comps', 'Schedule appointment', 'Review contract', 'Other']) })),
+  follow_up_recommendation: z.string(),
+});
+
+/** Summarizes a conversation from a transcript the user attached to the communication record. */
+export async function callSummary(ctx: Ctx, commId: string) {
+  const comm = await getFor(ctx, 'communications', commId);
+  const transcript = String(comm.transcript ?? '').trim();
+  if (!transcript) throw new HttpError(422, 'This conversation has no transcript. Add one to the conversation record first.');
+  try {
+    const res = await client().beta.messages.parse({
+      model: MODEL, max_tokens: 8000, ...FALLBACK,
+      system: 'You summarize sales calls for a real estate wholesaling team from a transcript. Report only what the transcript says; if something was not discussed, leave it out rather than guessing. Action items are suggestions a person will review. If the other party asked not to be contacted again, say so first and recommend no further outreach.',
+      messages: [{ role: 'user', content: `Call on ${String(comm.at).slice(0, 10)} (${comm.direction}, logged outcome: ${comm.outcome ?? 'none'}).\n\nTranscript:\n${transcript}` }],
+      output_config: { effort: 'medium', format: zodOutputFormat(CallSummary) },
+    });
+    if (res.stop_reason === 'refusal' || !res.parsed_output) throw new HttpError(502, 'The AI could not summarize this transcript.');
+    return { ...res.parsed_output, generated_at: new Date().toISOString(), model: res.model };
   } catch (e) { fail(e); }
 }
 

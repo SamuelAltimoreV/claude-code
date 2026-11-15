@@ -58,7 +58,7 @@ export default function Analyzer() {
     const a = await w.create('analyses', { name, property_id: property.id, lead_id: lead?.id ?? null, inputs: i, results: r, rating: r.rating, mao: Math.round(r.mao), offer_price: i.offerPrice ?? null });
     if (property.arv !== i.arv || property.repair_cost !== i.repairs) await w.patch('properties', property.id, { arv: i.arv || null, repair_cost: i.repairs || null });
     if (lead && r.projectedFee > 0) await w.patch('leads', lead.id, { est_fee: Math.round(r.projectedFee) }).catch(() => {});
-    toast.success('Analysis saved to the property' + (lead ? ' and lead' : '')); const n = new URLSearchParams(sp); n.set('analysis', a.id); setSp(n);
+    toast.success('Analysis saved to the property' + (lead ? ' and lead' : '')); setLoaded(`${property.id}:${a.id}`); const n = new URLSearchParams(sp); n.set('analysis', a.id); setSp(n);
   });
 
   if (d.loading || loaded !== `${propertyId}:${analysisId}`) return <Loading rows={8} />;
