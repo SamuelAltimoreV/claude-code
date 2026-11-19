@@ -28,7 +28,7 @@ if (fs.existsSync(dist)) {
   app.get('*', c => c.html(fs.readFileSync(path.join(dist, 'index.html'), 'utf8')));
 }
 
-const server = serve({ fetch: app.fetch, port }, () => console.log(`Wholesale CRM API listening on http://localhost:${port} (${process.env.DATABASE_URL ? 'PostgreSQL' : 'embedded PGlite'})`));
+const server = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, () => console.log(`Wholesale CRM API listening on http://localhost:${port} (${process.env.DATABASE_URL ? 'PostgreSQL' : 'embedded PGlite'})`));
 
 // Scheduler: follow-up sequences, time-based automations, reminders, offer expiry.
 let ticking = false;
